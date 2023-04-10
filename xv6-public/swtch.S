@@ -18,7 +18,7 @@ swtch:
   pushl %edi
 
   # Switch stacks
-  movl %esp, (%eax)
+  movl %esp, (%eax) # This is step that context switch to new context by saving new content to %esp
   movl %edx, %esp
 
   # Load new callee-saved registers
