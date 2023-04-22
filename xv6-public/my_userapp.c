@@ -8,8 +8,8 @@ main(int argc, char *argv[])
 	// char *buf = "Hello xv6!";
 	// int ret_val;
 	// ret_val = getLevel();
-	schedulerLock(2019040565);
-	// schedulerUnlock(2019040564);
+	// schedulerLock(2019040564);
+	schedulerUnlock(2019040564);
 	// exit();
 	while (1) printf(1, "hi\n");
 };

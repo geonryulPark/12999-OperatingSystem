@@ -52,10 +52,10 @@ struct proc {
   char name[16];               // Process name (debugging)
   
   int priority;                // MLFQ's priority
-  enum quelevel level;         // MLFQ's level which this process exists
-  int rtime;                   // time quantum
-  int etime;                   // enter time
-  int isSchedulerLock;         // schedulerLock true
+  enum quelevel level;         // MLFQ's level where this process exists
+  int rtime;                   // How many time consumed by this process
+  int etime;                   // enter time by ticks
+  int isSchedulerLock;         // schedulerLock ?
 };
 
 // Process memory is laid out contiguously, low addresses first:

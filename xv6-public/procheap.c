@@ -55,9 +55,6 @@ void push(Heap* heap, struct proc* p) {
         }
         heap->procs[i] = p;
         // cprintf("heapsize : %d\n", heap->size);
-        for (int i = 1; i <= heap->size; i++) {
-            // cprintf("after push, pid, priority, rtime : %d %d %d\n", heap->procs[i]->pid, heap->procs[i]->priority, heap->procs[i]->rtime);
-        }
     }
 }
 
@@ -101,60 +98,3 @@ struct proc* pop(Heap* heap) {
 // in proc.c, we can decide whether proc exists in ptable
 // if it exists, we can know what that's queue level in proc->level;
 // And this func must be used in L2 queue
-
-/*
-void setPriority(Heap* heap, int pid, int cpriority) {
-    int i = 1;
-    int originPriority;
-
-    while (i < NPROC && heap->procs[i]->pid != pid) i++;
-    originPriority = heap->procs[i]->priority;
-    heap->procs[i]->priority = cpriority;
-
-    if (heap->procs[i]->level != L2) {
-        heap->procs[i]->priority = cpriority;
-    }
-    else
-    {
-
-    if (originPriority < cpriority) {
-        while (i > 1 && heap->procs[i]->priority < heap->procs[i/2]->priority) {
-            swap(heap->procs[i/2], heap->procs[i]);
-            i /= 2;
-        }
-    } else {
-        int child = i;
-        for (i = i; i*2 <= heap->size; i = child)
-        {
-            child = i*2;
-            if (child < heap->size && heap->procs[child+1]->priority < heap->procs[child]->priority)
-                child += 1;
-            
-            if (heap->procs[child]->priority < heap->procs[i]->priority) {
-                swap(heap->procs[i], heap->procs[child]);
-            }
-            else {
-                break;
-            }
-        }    
-    }
-}
-}
-
-void expiredTime(Heap MLFQ[], struct proc *p) {
-    if (p->level != L2) {
-        int l = p->level;
-        while (l <= L2 && !isEmpty(&MLFQ[l])) l++;
-        if (l == 3) {
-            panic("ERROR procheap.c : at expiredTime()\n");
-            exit();
-        } push(&MLFQ[l], p);
-        p->level = l;
-        p->rtime = 0;
-    } else {
-        // MLFQ's level is L2
-        if (p->priority > 0)
-            p->priority--;
-    }
-}
-*/

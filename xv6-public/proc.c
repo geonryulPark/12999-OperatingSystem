@@ -290,7 +290,7 @@ void exit(void)
 
   // Jump into the scheduler, never to return.
   curproc->state = ZOMBIE;
-  curproc->isSchedulerLock = 0; // 이걸로 panic 했다!!!!!!!!!
+  curproc->isSchedulerLock = 0; //
   sched();
   panic("zombie exit");
 }
@@ -325,6 +325,7 @@ int wait(void)
         p->name[0] = 0;
         p->killed = 0;
         p->state = UNUSED;
+        p->isSchedulerLock = 0;
         if (p->level == L2)
         {
           setPriority(p->pid, 4);
@@ -538,6 +539,7 @@ void sleep(void *chan, struct spinlock *lk)
   // Go to sleep.
   p->chan = chan;
   p->state = SLEEPING;
+  p->isSchedulerLock = 0;
   if (p->level == L2)
   {
     setPriority(p->pid, 4);
@@ -655,39 +657,41 @@ void procdump(void)
 
 void priority_boosting1(void)
 {
-  // already acquired ptable.lock in trap.c
-  // so no need to lock
-  struct proc *p, *lockp = 0;
+  struct proc *p;
   acquire(&ptable.lock);
-  for (p = ptable.proc; p < &ptable.proc[NPROC]; p++)
-  {
-    if (p->isSchedulerLock == 1)
-      break;
-  }
-  release(&ptable.lock);
-
 
   for (int i = L0; i <= L2; i++)
     while (!isEmpty(&MLFQ[i]))
       pop(&MLFQ[i]);
 
-  acquire(&ptable.lock);
-  if (p->isSchedulerLock == 1)
-  {
-    p->level = L0;
-    p->isSchedulerLock = 0;
-    push(&MLFQ[L0], p);
-    lockp = p;
-
-  }
   for (p = ptable.proc; p < &ptable.proc[NPROC]; p++)
   {
-    if (p == lockp) continue;
-    p->level = L0;
-    p->priority = 3;
-    p->rtime = 0;
-    p->etime = ticks;
-    push(&MLFQ[L0], p);
+    if (p->isSchedulerLock == 1)
+    {
+      p->level = L0;
+      p->priority = 3;
+      p->rtime = 0;
+      p->etime = ticks;
+      p->isSchedulerLock = 0;
+
+      // push MLFQ[L0] at front
+      MLFQ[L0].size += 1;
+      if (MLFQ[L0].front == 0) {
+        MLFQ[L0].front = NPROC;
+      } else {
+        MLFQ[L0].front -= 1;
+      }
+      MLFQ[L0].procs[MLFQ[L0].front] = p;
+    }
+    else 
+    {
+      p->level = L0;
+      p->priority = 3;
+      p->rtime = 0;
+      p->etime = ticks;
+      p->isSchedulerLock = 0;
+      push(&MLFQ[L0], p);
+    }
   }
   release(&ptable.lock);
 }
@@ -765,6 +769,13 @@ int getLevel(void)
 void schedulerLock(int password)
 {
   struct proc *p = myproc();
+  if (myproc()->isSchedulerLock == 1) {
+    cprintf("schedulerLock failed (duplicate Lock) : pid, time_quantum, level : %d %d %d\n", p->pid, p->rtime, p->level);
+    acquire(&ptable.lock);
+    p->state = UNUSED;
+    release(&ptable.lock);
+    exit();
+  }
   if (password == PASSWORD)
   {
     acquire(&tickslock);
@@ -789,8 +800,14 @@ void schedulerLock(int password)
 void schedulerUnlock(int password)
 {
   struct proc *p = myproc();
-  if (!p->isSchedulerLock)
-    return;
+  if (p->isSchedulerLock != 1) {
+    cprintf("schedulerUnlock failed (Not locked): pid, time_quantum, level : %d %d %d\n", p->pid, p->rtime, p->level);
+
+    acquire(&ptable.lock);
+    p->state = UNUSED;
+    release(&ptable.lock);
+    exit();
+  }
   if (password == PASSWORD)
   {
     acquire(&ptable.lock);
