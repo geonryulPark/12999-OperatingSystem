@@ -8,6 +8,8 @@
         "param.h": "c",
         "types.h": "c",
         "stat.h": "c",
-        "user.h": "c"
+        "user.h": "c",
+        "compare": "cpp",
+        "type_traits": "cpp"
     }
 }
