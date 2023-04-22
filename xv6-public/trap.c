@@ -23,7 +23,9 @@ tvinit(void)
     SETGATE(idt[i], 0, SEG_KCODE<<3, vectors[i], 0);
   SETGATE(idt[T_SYSCALL], 1, SEG_KCODE<<3, vectors[T_SYSCALL], DPL_USER);
   SETGATE(idt[128], 1, SEG_KCODE<<3, vectors[128], DPL_USER);
-  // T_SYSC = 128
+  SETGATE(idt[129], 1, SEG_KCODE<<3, vectors[129], DPL_USER);
+  SETGATE(idt[130], 1, SEG_KCODE<<3, vectors[130], DPL_USER);
+  // T_SYSC = 128, 129, 130
 
   initlock(&tickslock, "time");
 }
@@ -45,6 +47,18 @@ trap(struct trapframe *tf)
     return;
   }
 
+  if (tf->trapno == 129) {
+    schedulerLock(0000);
+    exit();
+    return;
+  }
+
+  if (tf->trapno == 130) {
+    schedulerLock(0000);
+    exit();
+    return;
+  }
+
   if(tf->trapno == T_SYSCALL){
     if(myproc()->killed)
       exit();
@@ -61,7 +75,7 @@ trap(struct trapframe *tf)
       acquire(&tickslock);
       ticks++;
       if (ticks % 100 == 0)
-        priority_boosting();
+        priority_boosting1();
       wakeup(&ticks);
       release(&tickslock);
     }

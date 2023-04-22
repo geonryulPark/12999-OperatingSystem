@@ -54,10 +54,9 @@ struct proc {
   int priority;                // MLFQ's priority
   enum quelevel level;         // MLFQ's level which this process exists
   int rtime;                   // time quantum
-  int spriority;               // MLFQ's saved priority
+  int etime;                   // enter time
+  int isSchedulerLock;         // schedulerLock true
 };
-
-void priority_boosting(void);
 
 // Process memory is laid out contiguously, low addresses first:
 //   text

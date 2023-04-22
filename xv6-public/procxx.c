@@ -6,11 +6,8 @@
 #include "x86.h"
 #include "proc.h"
 #include "spinlock.h"
-#include "procheap.h"
 
 #define TIME_QUANTUM(level) 2 * level + 4
-#define NUM_QUEUE 3
-#define PASSWORD 2019040564
 
 struct
 {
@@ -26,13 +23,9 @@ extern void trapret(void);
 
 static void wakeup1(void *chan);
 
-Heap MLFQ[NUM_QUEUE];
-
 void pinit(void)
 {
   initlock(&ptable.lock, "ptable");
-  for (int i = L0; i <= L2; i++)
-    createHeap(&MLFQ[i], i);
 }
 
 // Must be called with interrupts disabled
@@ -103,7 +96,6 @@ found:
   p->level = L0;
   p->priority = 3;
   p->rtime = 0;
-  p->isSchedulerLock = 0;
 
   release(&ptable.lock);
 
@@ -165,9 +157,6 @@ void userinit(void)
   acquire(&ptable.lock);
 
   p->state = RUNNABLE;
-  p->etime = ticks;
-
-  push(&MLFQ[p->level], p);
 
   release(&ptable.lock);
 }
@@ -237,8 +226,6 @@ int fork(void)
   acquire(&ptable.lock);
 
   np->state = RUNNABLE;
-  np->etime = ticks;
-  push(&MLFQ[np->level], np);
 
   release(&ptable.lock);
 
@@ -290,7 +277,6 @@ void exit(void)
 
   // Jump into the scheduler, never to return.
   curproc->state = ZOMBIE;
-  curproc->isSchedulerLock = 0; // 이걸로 panic 했다!!!!!!!!!
   sched();
   panic("zombie exit");
 }
@@ -325,10 +311,6 @@ int wait(void)
         p->name[0] = 0;
         p->killed = 0;
         p->state = UNUSED;
-        if (p->level == L2)
-        {
-          setPriority(p->pid, 4);
-        }
         release(&ptable.lock);
         return pid;
       }
@@ -364,96 +346,50 @@ void scheduler(void)
   {
     // Enable interrupts on this processor.
     sti();
+
     acquire(&ptable.lock);
-
-    /*
-    for (p = ptable.proc; p < &ptable.proc[NPROC]; p++) {
-      if (p->state != RUNNABLE)
-        continue;
-
-      cprintf("pid, kstack, tick ; %d %d %d\n", p->pid, p->kstack, ticks);
-
-      c->proc = p;
-      switchuvm(p);
-
-      p->state = RUNNING;
-      swtch(&(c->scheduler), p->context);
-
-      switchkvm();
-      c->proc = 0;
-    }
-    */
-    // /*
-    for (p = ptable.proc; p < &ptable.proc[NPROC]; p++)
+    for (int i = L0; i <= L2; i++)
     {
-      if (p->isSchedulerLock == 1)
-        break;
-    }
-
-    if (p->isSchedulerLock == 1)
-    {
-      // cprintf("LOKCK : pid, ticks : %d %d \n", p->pid, ticks);
-      c->proc = p;
-      switchuvm(p);
-
-      p->state = RUNNING;
-      swtch(&(c->scheduler), p->context);
-
-      switchkvm();
-      c->proc = 0;
-    }
-    else
-    {
-      for (int i = L0; i <= L2; i++)
+      if (i != L2)
       {
-        // cprintf("tick, level %d %d\n", ticks, i);
-        if (!isEmpty(&MLFQ[i]))
+        for (p = ptable.proc; p < &ptable.proc[NPROC]; p++)
         {
-          p = pop(&MLFQ[i]);
-          if (p->state != RUNNABLE)
-            break;
-          // cprintf("pid, tick ; %d %d\n", p->pid, ticks);
+          if (p->state != RUNNABLE || p->level != i)
+            continue;
 
-          // cprintf("pid, kstack, tick ; %d %d %d\n", p->pid, p->kstack, ticks);
-          // cprintf("level : %d\n", p->level);
           c->proc = p;
           switchuvm(p);
-
-          p->rtime += 1;
           p->state = RUNNING;
+
           swtch(&(c->scheduler), p->context);
-
           switchkvm();
-          // cprintf("pid, kstack, level, rtime: %d %d %d %d\n", p->pid, p->kstack, p->level, p->rtime);
-          // cprintf("pid, rtime level priority: %d %d %d %d\n", p->pid, p->rtime, p->level, p->priority);
-
-          if (p->rtime >= MLFQ[p->level].qtime)
-          {
-            p->rtime = 0;
-            if (p->level == L2)
-            {
-              p->rtime = 0;
-              p->priority = p->priority == 0 ? p->priority - 1 : p->priority;
-            }
-            else
-            {
-              p->level += 1;
-              p->rtime = 0;
-            }
-          }
-
-          // cprintf("pid, rtime level priority: %d %d %d %d\n", p->pid, p->rtime, p->level, p->priority);
-          p->etime = ticks;
-          push(&MLFQ[p->level], p);
 
           c->proc = 0;
-          break;
+        }
+      }
+      else
+      {
+        for (int j = 0; j < 4; j++) 
+        {
+          for (p = ptable.proc; p < &ptable.proc[NPROC]; p++) 
+          {
+            if (p->state != RUNNABLE || p->level != i || p->priority != j)
+              continue;
+            
+            c->proc = p;
+            switchuvm(p);
+            p->state = RUNNING;
+
+            swtch(&(c->scheduler), p->context);
+            switchkvm();
+
+            c->proc = 0;
+          }
         }
       }
     }
-      // */
-  
-      release(&ptable.lock);
+
+    release(&ptable.lock);
   }
 }
 
@@ -486,8 +422,22 @@ void sched(void)
 void yield(void)
 {
   acquire(&ptable.lock); // DOC: yieldlock
-  myproc()->state = RUNNABLE;
-  sched();
+  if (myproc()->rtime < TIME_QUANTUM(myproc()->level))
+  {
+    myproc()->rtime++;
+    // cprintf("yield() : not sched(), rtime : %d, ticks : %d\n", myproc()->rtime, ticks);
+  }
+  else
+  {
+    myproc()->state = RUNNABLE;
+    if (myproc()->level != L2)
+      myproc()->level++;
+    else
+      myproc()->priority = myproc()->priority ? myproc()->priority - 1 : 0;
+    // cprintf("yield() : will sched(), rtime : %d, ticks : %d\n", myproc()->rtime, ticks);
+    myproc()->rtime = 0;
+    sched();
+  }
   release(&ptable.lock);
 }
 
@@ -538,10 +488,6 @@ void sleep(void *chan, struct spinlock *lk)
   // Go to sleep.
   p->chan = chan;
   p->state = SLEEPING;
-  if (p->level == L2)
-  {
-    setPriority(p->pid, 4);
-  }
 
   sched();
 
@@ -566,15 +512,7 @@ wakeup1(void *chan)
 
   for (p = ptable.proc; p < &ptable.proc[NPROC]; p++)
     if (p->state == SLEEPING && p->chan == chan)
-    {
       p->state = RUNNABLE;
-      p->rtime = 0;
-      p->priority = 3;
-      p->level = L0;
-      // ticks
-      p->etime = ticks;
-      push(&MLFQ[L0], p);
-    }
 }
 
 // Wake up all processes sleeping on chan.
@@ -600,14 +538,7 @@ int kill(int pid)
       p->killed = 1;
       // Wake process from sleep if necessary.
       if (p->state == SLEEPING)
-      {
         p->state = RUNNABLE;
-        p->rtime = 0;
-        p->priority = 3;
-        p->level = L0;
-        p->etime = ticks;
-        push(&MLFQ[L0], p);
-      }
       release(&ptable.lock);
       return 0;
     }
@@ -653,172 +584,15 @@ void procdump(void)
   }
 }
 
-void priority_boosting1(void)
+void priority_boosting(void)
 {
   // already acquired ptable.lock in trap.c
   // so no need to lock
-  struct proc *p, *lockp = 0;
-  acquire(&ptable.lock);
-  for (p = ptable.proc; p < &ptable.proc[NPROC]; p++)
-  {
-    if (p->isSchedulerLock == 1)
-      break;
-  }
-  release(&ptable.lock);
-
-
-  for (int i = L0; i <= L2; i++)
-    while (!isEmpty(&MLFQ[i]))
-      pop(&MLFQ[i]);
-
-  acquire(&ptable.lock);
-  if (p->isSchedulerLock == 1)
-  {
-    p->level = L0;
-    p->isSchedulerLock = 0;
-    push(&MLFQ[L0], p);
-    lockp = p;
-
-  }
-  for (p = ptable.proc; p < &ptable.proc[NPROC]; p++)
-  {
-    if (p == lockp) continue;
-    p->level = L0;
-    p->priority = 3;
-    p->rtime = 0;
-    p->etime = ticks;
-    push(&MLFQ[L0], p);
-  }
-  release(&ptable.lock);
-}
-
-void swap(struct proc *parent, struct proc *child)
-{
-  struct proc *tmp = parent;
-  parent = child;
-  child = tmp;
-}
-
-void setPriority(int pid, int cpriority)
-{
-  int i = 1;
-  int originPriority;
-  Heap *heap;
   struct proc *p;
-
   for (p = ptable.proc; p < &ptable.proc[NPROC]; p++)
   {
-    if (p->pid == pid)
-      break;
-  }
-
-  heap = &MLFQ[p->level];
-  originPriority = heap->procs[i]->priority;
-  heap->procs[i]->priority = cpriority;
-
-  if (heap->procs[i]->level != L2)
-  {
-    heap->procs[i]->priority = cpriority;
-  }
-  else
-  {
-    if (originPriority < cpriority)
-    {
-      // verify upward
-      while ((i > 1 && heap->procs[i]->priority < heap->procs[i / 2]->priority)
-        || (i > 1 && (heap->procs[i]->priority == heap->procs[i/2]->priority) && (heap->procs[i]->etime < heap->procs[i/2]->etime)))
-      {
-        swap(heap->procs[i / 2], heap->procs[i]);
-        i /= 2;
-      }
-    }
-    else
-    {
-      // veryfy downward
-      int child = i;
-      for (i = i; i * 2 <= heap->size; i = child)
-      {
-        child = i * 2;
-        if ((child < heap->size && heap->procs[child + 1]->priority < heap->procs[child]->priority)
-          || (child < heap->size && (heap->procs[child+1]->priority == heap->procs[child]->priority) && (heap->procs[child+1]->etime < heap->procs[child]->etime)))
-          child += 1;
-
-        if (heap->procs[child]->priority < heap->procs[i]->priority
-          || ((heap->procs[i]->priority == heap->procs[child]->priority) && (heap->procs[i]->etime > heap->procs[child]->etime)))
-        {
-          swap(heap->procs[i], heap->procs[child]);
-        }
-        else
-        {
-          break;
-        }
-      }
-    }
-  }
-}
-
-int getLevel(void)
-{
-  return myproc()->level;
-}
-
-void schedulerLock(int password)
-{
-  struct proc *p = myproc();
-  if (password == PASSWORD)
-  {
-    acquire(&tickslock);
-    ticks = 0;
-    release(&tickslock);
-
-    acquire(&ptable.lock);
-    p->isSchedulerLock = 1;
-    release(&ptable.lock);
-  }
-  else
-  {
-    cprintf("schedulerLock failed : pid, time_quantum, level : %d %d %d\n", p->pid, p->rtime, p->level);
-    acquire(&ptable.lock);
-    p->state = UNUSED;
-    release(&ptable.lock);
-    exit();
-
-  }
-}
-
-void schedulerUnlock(int password)
-{
-  struct proc *p = myproc();
-  if (!p->isSchedulerLock)
-    return;
-  if (password == PASSWORD)
-  {
-    acquire(&ptable.lock);
-    p->isSchedulerLock = 0;
-    p->rtime = 0;
-    p->priority = 3;
     p->level = L0;
-    p->etime = ticks;
-
-    // push L0 queue at first
-    MLFQ[L0].size += 1;
-    if (MLFQ[L0].front == 0) {
-      MLFQ[L0].front = NPROC;
-    } else {
-      MLFQ[L0].front -= 1;
-    }
-    MLFQ[L0].procs[MLFQ[L0].front] = p;
-
-    release(&ptable.lock);
-  }
-  else
-  {
-    cprintf("schedulerUnlock failed : pid, time_quantum, level : %d %d %d\n", p->pid, p->rtime, p->level);
-
-    acquire(&ptable.lock);
-    p->state = UNUSED;
-    release(&ptable.lock);
-    exit();
-
+    p->priority = 3;
+    p->rtime = 0;
   }
 }
