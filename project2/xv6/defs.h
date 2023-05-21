@@ -24,6 +24,7 @@ void            panic(char*) __attribute__((noreturn));
 
 // exec.c
 int             exec(char*, char**);
+int             exec2(char*, char**, int);
 
 // file.c
 struct file*    filealloc(void);
@@ -120,6 +121,12 @@ void            userinit(void);
 int             wait(void);
 void            wakeup(void*);
 void            yield(void);
+
+int             setmemorylimit(int, int);
+void            getproclist(void);
+int             thread_create(thread_t* thread, void* (*start_routine)(void*), void* arg);
+void            thread_exit(void *);
+int             thread_join(thread_t, void **);
 
 // swtch.S
 void            swtch(struct context**, struct context*);

@@ -1,3 +1,5 @@
+#define NTHREAD 8
+
 // Per-CPU state
 struct cpu {
   uchar apicid;                // Local APIC ID
@@ -34,6 +36,19 @@ struct context {
 
 enum procstate { UNUSED, EMBRYO, SLEEPING, RUNNABLE, RUNNING, ZOMBIE };
 
+struct thread {
+  int tid;                            // Thread ID
+  enum procstate state;               // Thread state (e.g., running, blocked, terminated)
+  void *(*start_routine)(void *);     // Pointer to the thread's start function
+  void *arg;                          // Argument to pass to the start function
+  void *retval;                       // Value to be returned by the thread
+  int is_main;                        // to distinguish main thread (master thread)
+
+  struct trapframe *tf;
+  struct context *context;
+  char *kstack;
+};
+
 // Per-process state
 struct proc {
   uint sz;                     // Size of process memory (bytes)
@@ -49,6 +64,15 @@ struct proc {
   struct file *ofile[NOFILE];  // Open files
   struct inode *cwd;           // Current directory
   char name[16];               // Process name (debugging)
+
+  uint limit;                  // limitation of process memory (bytes)
+  int stacksize;               // stacksize used in exec2
+
+  struct proc *main_thread;       // point to main thread (original process)
+  int is_main_thread;             // 0: main thread, 1: peer thread
+  int tid;                        // used by tid when this process is thread
+  int thread_count;               // Current number of threads in the process
+  void *retval;                   // be used to store return value used in thread_join, exit
 };
 
 // Process memory is laid out contiguously, low addresses first:

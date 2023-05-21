@@ -20,3 +20,10 @@
 #define SYS_link   19
 #define SYS_mkdir  20
 #define SYS_close  21
+
+#define SYS_setmemorylimit 22
+#define SYS_getproclist 23
+#define SYS_exec2 24
+#define SYS_thread_create 25
+#define SYS_thread_exit 26
+#define SYS_thread_join 27

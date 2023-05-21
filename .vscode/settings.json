@@ -1,0 +1,12 @@
+{
+    "files.associations": {
+        "*.c": "c",
+        "x86.h": "c",
+        "elf.h": "c",
+        "defs.h": "c",
+        "user.h": "c",
+        "types.h": "c",
+        "proc.h": "c",
+        "param.h": "c"
+    }
+}

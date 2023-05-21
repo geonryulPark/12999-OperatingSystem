@@ -24,6 +24,13 @@ char* sbrk(int);
 int sleep(int);
 int uptime(void);
 
+int setmemorylimit(int, int);
+void getproclist(void);
+int exec2(char*, char**, int);
+int thread_create(thread_t* thread, void* (*start_routine)(void*), void* arg);
+int thread_exit(void *);
+int thread_join(thread_t, void **); 
+
 // ulib.c
 int stat(const char*, struct stat*);
 char* strcpy(char*, const char*);
