@@ -149,3 +149,9 @@ sys_thread_join(void)
   
   return thread_join((thread_t)thread, (void **)retval); 
 }
+
+int
+sys_gettid(void)
+{
+  return myproc()->tid;
+}

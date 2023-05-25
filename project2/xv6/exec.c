@@ -106,7 +106,9 @@ exec(char *path, char **argv)
       last = s+1;
   safestrcpy(curproc->name, last, sizeof(curproc->name));
 
-  /* Clean up all thread that have same pid */
+  curproc->parent = curproc->main_thread->parent;
+
+  // Clean up all thread that have same pid 
   acquire(&ptable.lock);
   for (p = ptable.proc; p < &ptable.proc[NPROC]; p++) {
     if (p->pid != curproc->pid || p == curproc)
@@ -131,10 +133,11 @@ exec(char *path, char **argv)
 
     kfree(p->kstack);
     p->kstack = 0;
-    freevm(p->pgdir);
+    deallocuvm(p->pgdir, p->sz, p->stack_base);
     p->sz = 0;
 
     p->stacksize = 0;
+    p->stack_base = 0;
     p->limit = 0;
 
     p->main_thread = 0;
@@ -262,14 +265,6 @@ exec2(char *path, char **argv, int stacksize)
       last = s+1;
   safestrcpy(curproc->name, last, sizeof(curproc->name));
 
-  // Commit to the user image.
-  oldpgdir = curproc->pgdir;
-  curproc->pgdir = pgdir;
-  curproc->sz = sz;
-  curproc->tf->eip = elf.entry;  // main
-  curproc->tf->esp = sp;
-  curproc->stacksize = stacksize;
-
 /* Clean up all thread that have same pid */
   acquire(&ptable.lock);
   for (p = ptable.proc; p < &ptable.proc[NPROC]; p++) {
@@ -295,7 +290,9 @@ exec2(char *path, char **argv, int stacksize)
 
     kfree(p->kstack);
     p->kstack = 0;
-    freevm(p->pgdir);
+    // freevm(p->pgdir);
+    deallocuvm(p->pgdir, p->sz, p->stack_base);
+
     p->sz = 0;
 
     p->stacksize = 0;
@@ -310,6 +307,15 @@ exec2(char *path, char **argv, int stacksize)
     p->killed = 0;
     p->state = UNUSED;
   }
+
+  // Commit to the user image.
+  oldpgdir = curproc->pgdir;
+  curproc->pgdir = pgdir;
+  curproc->sz = sz;
+  curproc->tf->eip = elf.entry;  // main
+  curproc->tf->esp = sp;
+  curproc->stacksize = stacksize;
+  
   release(&ptable.lock);
 
   switchuvm(curproc);

@@ -7,6 +7,7 @@
         "user.h": "c",
         "types.h": "c",
         "proc.h": "c",
-        "param.h": "c"
+        "param.h": "c",
+        "traps.h": "c"
     }
 }

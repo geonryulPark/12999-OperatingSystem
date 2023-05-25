@@ -154,12 +154,13 @@ int main(int argc, char *argv[])
     failed();
   }
   printf(1, "Test 2 passed\n\n");
-
+// /*
   printf(1, "Test 3: Sbrk test\n");
   create_all(NUM_THREAD, thread_sbrk);
   join_all(NUM_THREAD);
   printf(1, "Test 3 passed\n\n");
 
   printf(1, "All tests passed!\n");
+  // */
   exit();
 }

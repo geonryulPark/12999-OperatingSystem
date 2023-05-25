@@ -30,6 +30,7 @@ int exec2(char*, char**, int);
 int thread_create(thread_t* thread, void* (*start_routine)(void*), void* arg);
 int thread_exit(void *);
 int thread_join(thread_t, void **); 
+int gettid(void);
 
 // ulib.c
 int stat(const char*, struct stat*);

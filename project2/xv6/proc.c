@@ -98,9 +98,10 @@ found:
 
   /* thread variable initialize
       original process == main_thread */
-  p->is_main_thread = 1;
+    
+  // p->is_main_thread = 1;
   p->main_thread = p;
-  p->tid = nexttid++;
+  p->tid = 0;
   p->thread_count = 1;
 
   release(&ptable.lock);
@@ -125,6 +126,7 @@ found:
   p->context = (struct context*)sp;
   memset(p->context, 0, sizeof *p->context);
   p->context->eip = (uint)forkret;
+  memset(p->thread_stack, 0, sizeof *p->thread_stack);
 
   return p;
 }
@@ -174,16 +176,24 @@ growproc(int n)
 {
   uint sz;
   struct proc *curproc = myproc();
+  struct proc *main_thread = curproc->main_thread;
+  int limit;
 
-  sz = curproc->sz;
-  if(n > 0){
+  acquire(&ptable.lock);
+
+  limit = curproc->limit;
+  sz = main_thread->sz;
+  if(n > 0 && (limit == 0 || sz+n < limit)){
     if((sz = allocuvm(curproc->pgdir, sz, sz + n)) == 0)
       return -1;
   } else if(n < 0){
     if((sz = deallocuvm(curproc->pgdir, sz, sz + n)) == 0)
       return -1;
   }
-  curproc->sz = sz;
+  main_thread->sz = sz;
+
+  release(&ptable.lock);
+
   switchuvm(curproc);
   return 0;
 }
@@ -500,20 +510,20 @@ int
 kill(int pid)
 {
   struct proc *p;
+  int ishaving = 0; 
 
   acquire(&ptable.lock);
   for(p = ptable.proc; p < &ptable.proc[NPROC]; p++){
     if(p->pid == pid){
+      ishaving = 1;
       p->killed = 1;
       // Wake process from sleep if necessary.
       if(p->state == SLEEPING)
         p->state = RUNNABLE;
-      release(&ptable.lock);
-      return 0;
     }
   }
   release(&ptable.lock);
-  return -1;
+  return ishaving == 1 ? 0 : -1;
 }
 
 //PAGEBREAK: 36
@@ -564,7 +574,7 @@ setmemorylimit(int pid, int limit)
       rp = p;
   }
 
-  if (rp == NULL || limit < 0 || limit < rp->sz)
+  if (rp == NULL || limit < 0 || (limit < rp->sz && limit != 0))
     goto bad;
 
   rp->limit = limit;
@@ -585,48 +595,55 @@ getproclist(void)
   for (p = ptable.proc; p < &ptable.proc[NPROC]; p++) {
     if (p->state != RUNNABLE && p->state != RUNNING)
       continue;
+    if (p->main_thread != p)
+      continue;
 
-    cprintf("name : %s\t| pid : %d\t| stack page : %d\t| alloc mem : %d\t| mem lim : %d\n", p->name, p->pid, p->stacksize, p->sz, p->limit);
+    cprintf("name : %s | pid : %d | stack page : %d | alloc mem : %d | mem lim : %d | thread count : %d\n", 
+      p->name, p->pid, p->stacksize, p->sz, p->limit, p->thread_count);
   }
   release(&ptable.lock);
 }
 
 /* thread functions */
-
 int
 thread_create(thread_t* thread, void* (*start_routine)(void*), void* arg)
 {
-  int i;
-  uint sp, ustack[2];
-  struct proc *peer_thread, *main_thread;
-  struct proc *curproc = myproc();
+  int i, tcount;
+  uint stack_base, sz, ustack[2];
+  pde_t *pgdir;
+  struct proc *peer_thread;
+  struct proc *main_thread;
 
-  main_thread = curproc->is_main_thread ? curproc : curproc->main_thread;
-  // Allocate process.
-  if((peer_thread = allocproc()) == 0){
+  if ((peer_thread = allocproc()) == 0) {
     return -1;
   }
-  nextpid--;
+  nextpid -= 1;
 
-  // Copy process state from proc.
-  if((peer_thread->pgdir = copyuvm(main_thread->pgdir, main_thread->sz)) == 0){
-    kfree(peer_thread->kstack);
-    peer_thread->kstack = 0;
+  main_thread = myproc()->main_thread;
+
+  acquire(&ptable.lock);
+  
+  tcount = main_thread->thread_count;
+  pgdir = main_thread->pgdir;
+  stack_base = main_thread->sz;
+
+  if ((sz = allocuvm(pgdir, stack_base, stack_base + 2*PGSIZE)) < 0) {
+    cprintf("allocuvm thread stack failed\n");
     peer_thread->state = UNUSED;
+    release(&ptable.lock);
     return -1;
   }
 
-  // peer_thread->pgdir = main_thread->pgdir;
-  peer_thread->sz = main_thread->sz;
+  clearpteu(pgdir, (char*)(sz-2*PGSIZE));
+
+  release(&ptable.lock);
+
+  peer_thread->pid = main_thread->pid;
+  peer_thread->tid = main_thread->thread_count;
+  peer_thread->main_thread = main_thread;
+  peer_thread->stacksize = main_thread->stacksize;
   peer_thread->limit = main_thread->limit;
   *peer_thread->tf = *main_thread->tf;
-
-  peer_thread->main_thread = main_thread;
-  peer_thread->tid = nexttid++;
-  peer_thread->pid = main_thread->pid;
-  peer_thread->stacksize = main_thread->stacksize;
-
-  *thread = peer_thread->tid;
 
   for(i = 0; i < NOFILE; i++)
     if(main_thread->ofile[i])
@@ -634,44 +651,39 @@ thread_create(thread_t* thread, void* (*start_routine)(void*), void* arg)
   peer_thread->cwd = idup(main_thread->cwd);
 
   safestrcpy(peer_thread->name, main_thread->name, sizeof(main_thread->name));
-  
-  acquire(&ptable.lock);
-  
-  /* exec */
-  /*
-  sz = PGROUNDUP(main_thread->sz);
-  if ((peer_thread->sz = allocuvm(main_thread->pgdir, sz, sz + 2*PGSIZE)) == 0) {
-    cprintf("allocuvm error\n");
-    peer_thread->state = UNUSED;
-    release(&ptable.lock);
-    return -1;
-  }
-  */
 
-  // clearpteu(peer_thread->pgdir, (char*)(sz - 2*PGSIZE));
-  sp = (peer_thread->sz);
-  
+  stack_base = sz;
   ustack[0] = 0xffffffff;
   ustack[1] = (uint)arg;
-  sp -= 8;
+  stack_base -= 8;
 
-  if (copyout(peer_thread->pgdir, sp, ustack, 8) < 0) {
+  if (copyout(pgdir, stack_base, ustack, 8) < 0) {
     cprintf("copyout error\n");
     peer_thread->state = UNUSED;
     release(&ptable.lock);
     return -1;
   }
 
+  acquire(&ptable.lock);
+
+  peer_thread->sz = sz;
+  peer_thread->stack_base = stack_base;
+  peer_thread->pgdir = pgdir;
+  *thread = peer_thread->tid;
+
   peer_thread->tf->eip = (uint)start_routine;
-  peer_thread->tf->esp = sp;
+  peer_thread->tf->esp = stack_base;
+
   peer_thread->state = RUNNABLE;
 
+  main_thread->thread_count++;
+  main_thread->thread_stack[tcount-1] = 1;
+  main_thread->sz += 2*PGSIZE;
+  
   release(&ptable.lock);
 
-  main_thread->thread_count++;
-  // switchuvm(peer_thread);
-
   return 0;
+  
 }
 
 void
@@ -683,8 +695,6 @@ thread_exit(void *retval)
 
   if (cur_thread == initproc)
     panic("init exiting");
-  
-  acquire(&ptable.lock);
 
   // Close all open files.
   for(fd = 0; fd < NOFILE; fd++){
@@ -694,7 +704,12 @@ thread_exit(void *retval)
     }
   }
 
+  begin_op();
+  iput(cur_thread->cwd);
+  end_op();
   cur_thread->cwd = 0;
+
+  acquire(&ptable.lock);
 
   // Parent might be sleeping in wait().
   wakeup1(main_thread);
@@ -726,7 +741,8 @@ thread_join(thread_t thread, void **retval)
 
         kfree(p->kstack);
         p->kstack = 0;
-        freevm(p->pgdir);
+        deallocuvm(p->pgdir, p->sz, p->stack_base);
+        p->stack_base = 0;
         p->sz = 0;
 
         p->stacksize = 0;
