@@ -8,6 +8,7 @@
         "types.h": "c",
         "proc.h": "c",
         "param.h": "c",
-        "traps.h": "c"
+        "traps.h": "c",
+        "spinlock.h": "c"
     }
 }

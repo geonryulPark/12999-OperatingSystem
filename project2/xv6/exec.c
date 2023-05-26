@@ -265,6 +265,8 @@ exec2(char *path, char **argv, int stacksize)
       last = s+1;
   safestrcpy(curproc->name, last, sizeof(curproc->name));
 
+  curproc->parent = curproc->main_thread->parent;
+
 /* Clean up all thread that have same pid */
   acquire(&ptable.lock);
   for (p = ptable.proc; p < &ptable.proc[NPROC]; p++) {

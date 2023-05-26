@@ -38,7 +38,6 @@ main(int argc, char *argv[])
                 if ((pid2 = fork()) == 0) {
                     // Grandson, will be orphan
                     stacksize = atoi(arg2);
-                    printf(1, "arg1 : %s", arg1);
                     if (exec2(arg1, argvs, stacksize) < 0) {
                         exit();
                     }
