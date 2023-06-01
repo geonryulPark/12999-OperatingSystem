@@ -43,6 +43,7 @@ struct log {
   int outstanding; // how many FS sys calls are executing.
   int committing;  // in commit(), please wait.
   int dev;
+  int uncommitted;  // #uncomitted block
   struct logheader lh;
 };
 struct log log;
@@ -62,6 +63,7 @@ initlog(int dev)
   log.start = sb.logstart;
   log.size = sb.nlog;
   log.dev = dev;
+  log.uncommitted = 0;
   recover_from_log();
 }
 
@@ -121,6 +123,28 @@ recover_from_log(void)
   write_head(); // clear the log
 }
 
+int 
+sync(void)
+{
+  int block;
+
+  // if(log.committing != 1)
+    // panic("log.committing");
+  if(log.outstanding != 0)
+    wakeup(&log);
+  else {
+    commit();
+    acquire(&log.lock);
+    log.committing = 0;
+    block = log.uncommitted;
+    log.uncommitted = 0;
+    wakeup(&log);
+    release(&log.lock);
+    return block;
+  }
+  return -1;
+}
+
 // called at the start of each FS system call.
 void
 begin_op(void)
@@ -131,9 +155,11 @@ begin_op(void)
       sleep(&log, &log.lock);
     } else if(log.lh.n + (log.outstanding+1)*MAXOPBLOCKS > LOGSIZE){
       // this op might exhaust log space; wait for commit.
+      sync();
       sleep(&log, &log.lock);
     } else {
       log.outstanding += 1;
+      log.uncommitted += 1;
       release(&log.lock);
       break;
     }
@@ -162,15 +188,18 @@ end_op(void)
   }
   release(&log.lock);
 
+// /*
   if(do_commit){
     // call commit w/o holding locks, since not allowed
     // to sleep with locks.
-    commit();
+    // commit();
+    // sync();
     acquire(&log.lock);
     log.committing = 0;
     wakeup(&log);
     release(&log.lock);
   }
+  // */
 }
 
 // Copy modified blocks from cache to log.
