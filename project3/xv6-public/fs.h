@@ -33,16 +33,6 @@ struct dinode {
   short nlink;          // Number of links to inode in file system
   uint size;            // Size of file (bytes)
   uint addrs[NDIRECT+1];   // Data block addresses
-  // multi indirect용 변수 추가
-  // param.h의 fssize 수정해야 함 512B * 1000 = 512KB
-  
-  // *symbolic link (바로가기)
-  // ln.c 변수 받는 거 수정
-  // file.h inode 정보 수정
-  // sysfile.c sys_link
-
-  // *sync
-  // 
 };
 
 // Inodes per block.
