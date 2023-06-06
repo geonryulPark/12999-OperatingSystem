@@ -123,11 +123,19 @@ recover_from_log(void)
   write_head(); // clear the log
 }
 
+
 int 
 sync(void)
 {
   int block;
 
+  acquire(&log.lock);
+  if(log.outstanding > 0) {
+    log.outstanding -= 1;
+    release(&log.lock);
+    return -1;
+  }
+  release(&log.lock);
   // if(log.committing != 1)
     // panic("log.committing");
   if(log.outstanding != 0)
@@ -145,6 +153,12 @@ sync(void)
   return -1;
 }
 
+int
+test(void)
+{
+  return sync();
+}
+
 // called at the start of each FS system call.
 void
 begin_op(void)
@@ -155,8 +169,10 @@ begin_op(void)
       sleep(&log, &log.lock);
     } else if(log.lh.n + (log.outstanding+1)*MAXOPBLOCKS > LOGSIZE){
       // this op might exhaust log space; wait for commit.
+      release(&log.lock);
       sync();
-      sleep(&log, &log.lock);
+      acquire(&log.lock);
+      // sleep(&log, &log.lock);
     } else {
       log.outstanding += 1;
       log.uncommitted += 1;

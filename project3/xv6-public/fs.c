@@ -429,6 +429,7 @@ bmap(struct inode *ip, uint bn)
     brelse(bp1);
     return addr;
   }
+  
   bn -= NINDIRECT;
 
   if (bn < NDINDIRECT) {
@@ -453,6 +454,8 @@ bmap(struct inode *ip, uint bn)
     brelse(bp1);
     return addr;
   }
+  
+  
   bn -= NDINDIRECT;
 
   if (bn < NTINDIRECT) {

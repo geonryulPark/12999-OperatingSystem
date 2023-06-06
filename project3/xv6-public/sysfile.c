@@ -253,6 +253,8 @@ create(char *path, short type, short major, short minor)
     ilock(ip);
     if(type == T_FILE && ip->type == T_FILE)
       return ip;
+    if(type == T_SYMLINK)
+      return ip;
     iunlockput(ip);
     return 0;
   }
@@ -282,11 +284,45 @@ create(char *path, short type, short major, short minor)
   return ip;
 }
 
+// Create new symbolic link to old file
+int
+sys_symlink(void)
+{
+  char *old, *new;
+  struct inode *ip;
+  int len;
+
+  if (argstr(0, &old) < 0 || argstr(1, &new) < 0)
+    return -1;
+
+  cprintf("old: %s, new: %s\nstrlen(old): %d, strlen(new): %d\n", old, new, strlen(old), strlen(new));
+  
+  begin_op();
+  if ((ip = create(new, T_SYMLINK, 0, 0)) == 0) {
+    end_op();
+    return -1;
+  }
+  cprintf("after create\n");
+
+  // ilock(ip);
+  len = strlen(old);
+  ip->len = len;
+  // writei(ip, (char*)&len, 0, sizeof(int));
+  cprintf("before writei\n");
+  writei(ip, old, 0, len+1);
+  cprintf("after writei\n");
+  iupdate(ip);
+  iunlockput(ip);
+  end_op();
+
+  return 0;
+}
+
 int
 sys_open(void)
 {
-  char *path;
-  int fd, omode;
+  char *path, next[MAXARG+1];
+  int fd, omode, cycle, len;
   struct file *f;
   struct inode *ip;
 
@@ -308,6 +344,29 @@ sys_open(void)
     }
     ilock(ip);
     if(ip->type == T_DIR && omode != O_RDONLY){
+      iunlockput(ip);
+      end_op();
+      return -1;
+    }
+  }
+
+  if (!(omode & O_NOFOLLOW)) {
+    cycle = 0;
+    while (ip->type == T_SYMLINK && cycle < 10) {
+      len = 0;
+      // readi(ip, (char*)&len, 0, sizeof(int));
+      len = ip->len;
+      readi(ip, next, 0, len+1);
+      iunlockput(ip);
+      if ((ip = namei(next)) == 0) {
+        end_op();
+        return -1;
+      }
+      ilock(ip);
+      cycle++;
+    }
+    if (cycle >= 10) {
+      cprintf("Cycle in symbolic link!\n");
       iunlockput(ip);
       end_op();
       return -1;
