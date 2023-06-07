@@ -28,7 +28,7 @@ bigfile(void)
   }
   for(i = 0; i < 30; i++){
     memset(buf, i, 600);
-    printf(1, "i : %d\n", i);
+    // printf(1, "i : %d\n", i);
     if(write(fd, buf, 600) != 600){
 
       printf(1, "write bigfile failed\n");
@@ -66,7 +66,7 @@ bigfile(void)
     printf(1, "read bigfile wrong total\n");
     exit();
   }
-  unlink("bigfile");
+  // unlink("bigfile");
 
   printf(1, "bigfile test ok\n");
 }

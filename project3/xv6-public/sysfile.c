@@ -294,23 +294,16 @@ sys_symlink(void)
 
   if (argstr(0, &old) < 0 || argstr(1, &new) < 0)
     return -1;
-
-  cprintf("old: %s, new: %s\nstrlen(old): %d, strlen(new): %d\n", old, new, strlen(old), strlen(new));
   
   begin_op();
   if ((ip = create(new, T_SYMLINK, 0, 0)) == 0) {
     end_op();
     return -1;
   }
-  cprintf("after create\n");
 
-  // ilock(ip);
   len = strlen(old);
   ip->len = len;
-  // writei(ip, (char*)&len, 0, sizeof(int));
-  cprintf("before writei\n");
   writei(ip, old, 0, len+1);
-  cprintf("after writei\n");
   iupdate(ip);
   iunlockput(ip);
   end_op();
@@ -335,17 +328,20 @@ sys_open(void)
     ip = create(path, T_FILE, 0, 0);
     if(ip == 0){
       end_op();
+      // cprintf("ip == 0\n");
       return -1;
     }
   } else {
     if((ip = namei(path)) == 0){
       end_op();
+      // cprintf("(ip = namei(path)) == 0\n");
       return -1;
     }
     ilock(ip);
     if(ip->type == T_DIR && omode != O_RDONLY){
       iunlockput(ip);
       end_op();
+      // cprintf("ip->type == T_DIR && omode != O_RDONLY\n");
       return -1;
     }
   }
@@ -354,7 +350,6 @@ sys_open(void)
     cycle = 0;
     while (ip->type == T_SYMLINK && cycle < 10) {
       len = 0;
-      // readi(ip, (char*)&len, 0, sizeof(int));
       len = ip->len;
       readi(ip, next, 0, len+1);
       iunlockput(ip);

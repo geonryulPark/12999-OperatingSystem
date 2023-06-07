@@ -183,6 +183,7 @@ UPROGS=\
 	_zombie\
 	_sync_test\
 	_bigfile_test\
+	_symlink_test\
 
 fs.img: mkfs README old_file.txt new_file.txt $(UPROGS)
 	./mkfs fs.img README old_file.txt new_file.txt $(UPROGS)
@@ -253,7 +254,7 @@ EXTRA=\
 	mkfs.c ulib.c user.h cat.c echo.c forktest.c grep.c kill.c\
 	ln.c ls.c mkdir.c rm.c stressfs.c usertests.c wc.c zombie.c\
 	printf.c umalloc.c\
-	README dot-bochsrc *.pl toc.* runoff runoff1 runoff.list sync_test.c bigfile_test.c\
+	README dot-bochsrc *.pl toc.* runoff runoff1 runoff.list sync_test.c bigfile_test.c symlink_test.c\
 	.gdbinit.tmpl gdbutil\
 
 dist:
