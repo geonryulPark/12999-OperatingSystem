@@ -8,126 +8,78 @@
 #include "traps.h"
 #include "memlayout.h"
 
-#define fail(msg) do {printf(1, "FAILURE: " msg "\n"); failed = 1; goto done;} while (0);
-static int failed = 0;
+char buf[8192];
+char name[3];
+char *echoargv[] = { "echo", "ALL", "TESTS", "PASSED", 0 };
+int stdout = 1;
 
-static void testsymlink(void);
-static void cleanup(void);
-
-int
-main(int argc, char *argv[])
+void
+linktest(void)
 {
-  cleanup();
-  testsymlink();
-  exit();
-}
+  int fd;
 
-static void
-cleanup(void)
-{
-  unlink("/testsymlink/a");
-  unlink("/testsymlink/b");
-  unlink("/testsymlink/c");
-  unlink("/testsymlink/1");
-  unlink("/testsymlink/2");
-  unlink("/testsymlink/3");
-  unlink("/testsymlink/4");
-  unlink("/testsymlink/z");
-  unlink("/testsymlink/y");
-  unlink("/testsymlink");
-}
+  printf(1, "linktest\n");
 
-// stat a symbolic link using O_NOFOLLOW
-static int
-stat_slink(char *pn, struct stat *st)
-{
-  int fd = open(pn, O_RDONLY | O_NOFOLLOW);
-  if(fd < 0) {
-    printf(1, "fd < 0\n");
-    return -1;
+  unlink("lf1");
+  unlink("lf2");
+
+  fd = open("lf1", O_CREATE|O_RDWR);
+  if(fd < 0){
+    printf(1, "create lf1 failed\n");
+    exit();
   }
-  if(fstat(fd, st) != 0) {
-    printf(1, "fstat(fd, st) != 0\n");
-    return -1;
+  if(write(fd, "hello", 5) != 5){
+    printf(1, "write lf1 failed\n");
+    exit();
   }
-  return 0;
+  close(fd);
+
+  if(symlink("lf1", "lf2") < 0){
+    printf(1, "link lf1 lf2 failed\n");
+    exit();
+  }
+
+  fd = open("lf2", 0);
+  if(fd < 0){
+    printf(1, "open lf2 failed\n");
+    exit();
+  }
+
+  unlink("lf1");
+
+  if(open("lf1", 0) >= 0){
+    printf(1, "unlinked lf1 but it is still there!\n");
+    exit();
+  }
+
+  if(read(fd, buf, sizeof(buf)) != 5){
+    printf(1, "read lf2 failed\n");
+    exit();
+  }
+  close(fd);
+
+  unlink("lf2");
+  if(symlink("lf2", "lf1") >= 0){
+    printf(1, "link non-existant succeeded! oops\n");
+    exit();
+  }
+
+  if(symlink(".", "lf1") >= 0){
+    printf(1, "link . lf1 succeeded! oops\n");
+    exit();
+  }
+
+  if(symlink("lf2", "lf2") >= 0){
+    printf(1, "link lf2 lf2 succeeded! oops\n");
+    exit();
+  }
+
+  printf(1, "symlink test ok\n");
 }
 
-static void
-testsymlink(void)
+int main(void)
 {
-  int r, fd1 = -1, fd2 = -1;
-  char buf[4] = {'a', 'b', 'c', 'd'};
-  char c = 0, c2 = 0;
-  struct stat st;
-    
-  printf(1, "Start: test symlinks\n");
-
-  mkdir("/testsymlink");
-
-  fd1 = open("/testsymlink/a", O_CREATE | O_RDWR);
-  if(fd1 < 0) printf(1, "failed to open a\n");
-
-  r = symlink("/testsymlink/a", "/testsymlink/b");
-  if(r < 0)
-    printf(1, "symlink b -> a failed");
-
-  if(write(fd1, buf, sizeof(buf)) != 4)
-    fail("failed to write to a");
-
-  if (stat_slink("/testsymlink/b", &st) != 0)
-    fail("failed to stat b");
-  if(st.type != T_SYMLINK)
-    fail("b isn't a symlink");
-
-  fd2 = open("/testsymlink/b", O_RDWR);
-  if(fd2 < 0)
-    fail("failed to open b");
-  read(fd2, &c, 1);
-  if (c != 'a')
-    fail("failed to read bytes from b");
-
-  unlink("/testsymlink/a");
-  if(open("/testsymlink/b", O_RDWR) >= 0)
-    fail("Should not be able to open b after deleting a");
-
-  r = symlink("/testsymlink/b", "/testsymlink/a");
-  if(r < 0)
-    fail("symlink a -> b failed");
-
-  r = open("/testsymlink/b", O_RDWR);
-  if(r >= 0)
-    fail("Should not be able to open b (cycle b->a->b->..)\n");
-  
-  r = symlink("/testsymlink/nonexistent", "/testsymlink/c");
-  if(r != 0)
-    fail("Symlinking to nonexistent file should succeed\n");
-
-  r = symlink("/testsymlink/2", "/testsymlink/1");
-  if(r) fail("Failed to link 1->2");
-  r = symlink("/testsymlink/3", "/testsymlink/2");
-  if(r) fail("Failed to link 2->3");
-  r = symlink("/testsymlink/4", "/testsymlink/3");
-  if(r) fail("Failed to link 3->4");
-
-  close(fd1);
-  close(fd2);
-
-  fd1 = open("/testsymlink/4", O_CREATE | O_RDWR);
-  if(fd1<0) fail("Failed to create 4\n");
-  fd2 = open("/testsymlink/1", O_RDWR);
-  if(fd2<0) fail("Failed to open 1\n");
-
-  c = '#';
-  r = write(fd2, &c, 1);
-  if(r!=1) fail("Failed to write to 1\n");
-  r = read(fd1, &c2, 1);
-  if(r!=1) fail("Failed to read from 4\n");
-  if(c!=c2)
-    fail("Value read from 4 differed from value written to 1\n");
-
-  printf(1, "test symlinks: ok\n");
-done:
-  close(fd1);
-  close(fd2);
+    printf(1, "symlink test starting\n");
+    linktest();
+    exit();
 }

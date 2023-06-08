@@ -9,7 +9,7 @@ main(int argc, char *argv[])
     printf(2, "Usage: ln -h/s old new\n");
     exit();
   }
-  printf(1, "argv[0]: %s\nargv[1]: %s\nargv[2]: %s\nargv[3]: %s\n", argv[0], argv[1], argv[2], argv[3]);
+  
   if(!strcmp(argv[1], "-h")) {
     if(link(argv[2], argv[3]) < 0)
       printf(2, "hard link %s %s: failed\n", argv[2], argv[3]);

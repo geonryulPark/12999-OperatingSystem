@@ -296,6 +296,21 @@ sys_symlink(void)
     return -1;
   
   begin_op();
+  if((ip = namei(old)) == 0) {
+    end_op();
+    return -1;
+  }
+
+  ilock(ip);
+  if(ip->type == T_DIR){
+    iunlockput(ip);
+    end_op();
+    return -1;
+  }
+
+  iupdate(ip);
+  iunlock(ip);
+
   if ((ip = create(new, T_SYMLINK, 0, 0)) == 0) {
     end_op();
     return -1;
