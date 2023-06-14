@@ -318,6 +318,7 @@ sys_symlink(void)
 
   len = strlen(old);
   ip->len = len;
+  ip->type = T_SYMLINK;
   writei(ip, old, 0, len+1);
   iupdate(ip);
   iunlockput(ip);

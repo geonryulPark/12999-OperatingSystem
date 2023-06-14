@@ -10,6 +10,7 @@
         "param.h": "c",
         "traps.h": "c",
         "spinlock.h": "c",
-        "new": "c"
+        "new": "c",
+        "memlayout.h": "c"
     }
 }

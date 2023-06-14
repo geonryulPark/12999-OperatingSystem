@@ -7,11 +7,17 @@
 #include "x86.h"
 #include "elf.h"
 
+#include "fs.h" // below header files are for symlink
+#include "spinlock.h"
+#include "sleeplock.h"
+#include "file.h"
+#include "stat.h" //for symlink
+
 int
 exec(char *path, char **argv)
 {
-  char *s, *last;
-  int i, off;
+  char *s, *last, next[MAXARG+1];
+  int i, off, cycle, len;
   uint argc, sz, sp, ustack[3+MAXARG+1];
   struct elfhdr elf;
   struct inode *ip;
@@ -26,7 +32,29 @@ exec(char *path, char **argv)
     cprintf("exec: fail\n");
     return -1;
   }
+
   ilock(ip);
+  cycle = 0;
+    while (ip->type == T_SYMLINK && cycle < 10) {
+      len = 0;
+      len = ip->len;
+      readi(ip, next, 0, len+1);
+      iunlockput(ip);
+      if ((ip = namei(next)) == 0) {
+        end_op();
+        return -1;
+      }
+      ilock(ip);
+      cycle++;
+    }
+    if (cycle >= 10) {
+      cprintf("Cycle in symbolic link!\n");
+      iunlockput(ip);
+      end_op();
+      return -1;
+    }
+
+  
   pgdir = 0;
 
   // Check ELF header
