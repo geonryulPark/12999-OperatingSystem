@@ -7,11 +7,12 @@
 #include "x86.h"
 #include "elf.h"
 
-#include "fs.h" // below header files are for symlink
+// for include T_SYMLINK
+#include "fs.h"
 #include "spinlock.h"
 #include "sleeplock.h"
 #include "file.h"
-#include "stat.h" //for symlink
+#include "stat.h"
 
 int
 exec(char *path, char **argv)
