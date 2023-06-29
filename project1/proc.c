@@ -367,24 +367,6 @@ void scheduler(void)
     sti();
     acquire(&ptable.lock);
 
-    /*
-    for (p = ptable.proc; p < &ptable.proc[NPROC]; p++) {
-      if (p->state != RUNNABLE)
-        continue;
-
-      cprintf("pid, kstack, tick ; %d %d %d\n", p->pid, p->kstack, ticks);
-
-      c->proc = p;
-      switchuvm(p);
-
-      p->state = RUNNING;
-      swtch(&(c->scheduler), p->context);
-
-      switchkvm();
-      c->proc = 0;
-    }
-    */
-    // /*
     for (p = ptable.proc; p < &ptable.proc[NPROC]; p++)
     {
       if (p->isSchedulerLock == 1)
@@ -452,7 +434,6 @@ void scheduler(void)
         }
       }
     }
-      // */
   
       release(&ptable.lock);
   }
