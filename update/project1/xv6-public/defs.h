@@ -121,6 +121,11 @@ int             wait(void);
 void            wakeup(void*);
 void            yield(void);
 void            priority_boosting(void);
+void            setPriority(int, int);
+int             getLevel(void);
+void            schedulerLock(int);
+void            schedulerUnlock(int);
+
 
 // swtch.S
 void            swtch(struct context**, struct context*);

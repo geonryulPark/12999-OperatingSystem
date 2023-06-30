@@ -15,9 +15,11 @@ struct Queue createQueue(int level)
     queue.front = queue.size = 0;
     queue.rear = -1;
     queue.level = level;
+    queue.haveToBeInFront = 0;
 
     for (int i = 0; i < queue.capacity; i++)
         queue.array[i] = 0; 
+    queue.reservedForFront[0] = 0;
     return queue;
 }
 
@@ -34,6 +36,27 @@ int isEmpty(struct Queue *queue)
 int isLevelTwo(struct Queue *queue)
 {
     return (queue->level == L2);
+}
+
+int isThisL0(struct Queue *queue)
+{
+    return (queue->level == L0);
+}
+
+int isThereFront(struct Queue *queue)
+{
+    return (queue->reservedForFront[0] != 0);
+}
+
+int haveToBeInFrontOfL0(struct Queue *queue)
+{
+    return (isThisL0(queue) && queue->haveToBeInFront == 1);
+}
+
+void enqueueFrontOfL0(struct Queue *queue, struct proc *p)
+{
+    // will be used only in L0 queue, schedulerLock()
+    queue->reservedForFront[0] = p;
 }
 
 void enqueueLevelTwo(struct Queue *queue, struct proc *p)
@@ -59,7 +82,9 @@ void enqueue(struct Queue *queue, struct proc *p)
     if (isFull(queue))
         return;
     p->queueEnterTime = ticks;
-    if (!isLevelTwo(queue)) {
+    if (haveToBeInFrontOfL0(queue)) {
+        enqueueFrontOfL0(queue, p);
+    } else if (!isLevelTwo(queue)) {
         enqueueNormal(queue, p);
     } else {
         enqueueLevelTwo(queue, p);
@@ -101,11 +126,21 @@ struct proc* dequeueLevelTwo(struct Queue *queue)
     return item;
 }
 
+struct proc* dequeueFrontOfL0(struct Queue *queue)
+{
+    struct proc *item;
+    item = queue->reservedForFront[0];
+    queue->reservedForFront[0] = 0;
+    return item;
+}
+
 struct proc* dequeue(struct Queue *queue)
 {
     if (isEmpty(queue))
         return 0;
-    if (!isLevelTwo(queue)) {
+    if (isThereFront(queue)) {
+        return dequeueFrontOfL0(queue);
+    } else if (!isLevelTwo(queue)) {
         return dequeueNormal(queue);
     } else {
         return dequeueLevelTwo(queue);

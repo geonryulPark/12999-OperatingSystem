@@ -16,6 +16,8 @@ struct {
 static struct proc *initproc;
 
 int nextpid = 1;
+int isSchedulerLocked = 0;
+const int PASSWORD = 2019040564;
 extern void forkret(void);
 extern void trapret(void);
 
@@ -437,6 +439,7 @@ scheduler(void)
         swtch(&(c->scheduler), p->context);
         switchkvm();
 
+        p->consumeTime += 1;
         p->priority = updatePriority(p);
         p->level = updateLevel(p);
         enqueue(&MLFQ[p->level], p);
@@ -634,9 +637,30 @@ procdump(void)
   }
 }
 
-void priority_boosting(void)
+int getLevel(void)
+{
+  return myproc()->level;
+}
+
+void
+setPriority(int pid, int priority)
 {
   struct proc *p;
+  acquire(&ptable.lock);
+  for (p = ptable.proc; p < &ptable.proc[NPROC]; p++) {
+    if (p->pid == pid) {
+      p->priority = priority;
+      break;
+    }
+  }
+  release(&ptable.lock);
+}
+
+void 
+priority_boosting(void)
+{
+  struct proc *p;
+  isSchedulerLocked = MLFQ[L0].haveToBeInFront = 0;
   for (int level = L0; level <= L2; level++) {
     while (!isEmpty(&MLFQ[level])) {
       p = dequeue(&MLFQ[level]);
@@ -650,4 +674,36 @@ void priority_boosting(void)
       continue;
     enqueue(&MLFQ[L0], p);
   }
+}
+
+void schedulerLock(int password)
+{
+  struct proc *p = myproc();
+  if ((password != PASSWORD) || (isSchedulerLocked == 1)) {
+    cprintf("LOCK FAILED !! pid : %d | time quantum : %d | MLFQ level : %d\n", p->pid, p->consumeTime, p->level);
+    kill(p->pid);
+    return; 
+  }
+
+  isSchedulerLocked = MLFQ[L0].haveToBeInFront = 1;
+  acquire(&tickslock);
+  ticks = 0;
+  release(&tickslock);
+
+  enqueueFrontOfL0(&MLFQ[L0], p);  
+}
+
+void schedulerUnlock(int password)
+{
+  struct proc *p = myproc();
+  if ((password != PASSWORD) || (isSchedulerLocked != 1)) {
+    cprintf("UNLOCK FAILED !! pid : %d | time quantum : %d | MLFQ level : %d\n", p->pid, p->consumeTime, p->level);
+    kill(p->pid);
+    return; 
+  }
+
+  isSchedulerLocked = MLFQ[L0].haveToBeInFront = 0;
+  p->priority = 3;
+  p->level = L0;
+  p->consumeTime = 0;
 }

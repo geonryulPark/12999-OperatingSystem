@@ -77,6 +77,51 @@ sys_sleep(void)
   return 0;
 }
 
+int
+sys_yield(void)
+{
+  yield();
+  return 0;
+}
+
+int
+sys_getLevel(void)
+{
+  return getLevel();
+}
+
+int
+sys_setPriority(void)
+{
+  int pid, priority;
+  if (argint(0, &pid) < 0)
+    return -1;
+  if (argint(1, &priority) < 0)
+    return -1;
+  setPriority(pid, priority);
+  return 0;
+}
+
+int
+sys_schedulerLock(void)
+{
+  int password;
+  if (argint(0, &password) < 0)
+    return -1;
+  schedulerLock(password);
+  return 0;
+}
+
+int
+sys_schedulerUnlock(void)
+{
+  int password;
+  if (argint(0, &password) < 0)
+    return -1;
+  schedulerUnlock(password);
+  return 0;
+}
+
 // return how many clock tick interrupts have occurred
 // since start.
 int
