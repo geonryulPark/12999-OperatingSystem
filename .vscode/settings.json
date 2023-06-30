@@ -11,6 +11,7 @@
         "traps.h": "c",
         "spinlock.h": "c",
         "new": "c",
-        "memlayout.h": "c"
+        "memlayout.h": "c",
+        "queue.h": "c"
     }
 }
