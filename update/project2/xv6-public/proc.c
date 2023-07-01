@@ -6,7 +6,6 @@
 #include "x86.h"
 #include "proc.h"
 #include "spinlock.h"
-#include "queue.h"
 
 struct {
   struct spinlock lock;
@@ -16,22 +15,15 @@ struct {
 static struct proc *initproc;
 
 int nextpid = 1;
-int isSchedulerLocked = 0;
-int scheduledPid = -1;
-const int PASSWORD = 2019040564;
 extern void forkret(void);
 extern void trapret(void);
 
 static void wakeup1(void *chan);
 
-struct Queue MLFQ[3];
-
 void
 pinit(void)
 {
   initlock(&ptable.lock, "ptable");
-  for (int i = L0; i <= L2; i++)
-    MLFQ[i] = createQueue(i);
 }
 
 // Must be called with interrupts disabled
@@ -96,9 +88,6 @@ allocproc(void)
 found:
   p->state = EMBRYO;
   p->pid = nextpid++;
-  p->priority = 3;
-  p->level = L0;
-  p->consumeTime = 0;
 
   release(&ptable.lock);
 
@@ -160,7 +149,6 @@ userinit(void)
   acquire(&ptable.lock);
 
   p->state = RUNNABLE;
-  enqueue(&MLFQ[p->level], p);
 
   release(&ptable.lock);
 }
@@ -211,7 +199,6 @@ fork(void)
   np->sz = curproc->sz;
   np->parent = curproc;
   *np->tf = *curproc->tf;
-  np->level = curproc->level;
 
   // Clear %eax so that fork returns 0 in the child.
   np->tf->eax = 0;
@@ -228,7 +215,6 @@ fork(void)
   acquire(&ptable.lock);
 
   np->state = RUNNABLE;
-  enqueue(&MLFQ[np->level], np);
 
   release(&ptable.lock);
 
@@ -333,8 +319,6 @@ wait(void)
 //  - swtch to start running that process
 //  - eventually that process transfers control
 //      via swtch back to the scheduler.
-
-/*
 void
 scheduler(void)
 {
@@ -365,94 +349,6 @@ scheduler(void)
       // Process is done running for now.
       // It should have changed its p->state before coming back.
       c->proc = 0;
-    }
-    release(&ptable.lock);
-
-  }
-}
-
-*/
-int timeQuantum(int level)
-{
-  return 2 * level + 4;
-}
-
-int isOverQuantum(struct proc *p)
-{
-  if (p->consumeTime > timeQuantum(p->level))
-    return 1;
-  else
-    return 0;
-}
-
-int
-updateLevel(struct proc *p)
-{
-  if (isSchedulerLocked == 1)
-    return L0;
-  if (p->level != L2) {
-    if (isOverQuantum(p)) {
-      p->consumeTime = 0;
-      return p->level + 1;
-    }
-  }
-  return p->level; 
-}
-
-int
-updatePriority(struct proc *p)
-{
-  if (isSchedulerLocked == 1)
-    return p->priority;
-  if ((p->level == L2) && (p->priority > 0) && isOverQuantum(p)) {
-    p->consumeTime = 0;
-    return p->priority - 1;
-  }
-  else
-    return p->priority;
-}
-
-void
-scheduler(void)
-{
-  struct proc *p;
-  struct cpu *c = mycpu();
-  int revisit = 0;
-  c->proc = 0;
-
-  for(;;){
-    // Enable interrupts on this processor.
-    sti();
-
-    acquire(&ptable.lock);
-    for (int level = L0; level <= L2; level++) {
-      if (revisit) {
-        level = L0;
-        revisit = 0;
-      }
-      if (isEmpty(&MLFQ[level]))
-        continue;
-      while (!isEmpty(&MLFQ[level])) {
-        if ((p = dequeue(&MLFQ[level]))->state != RUNNABLE)
-          continue;
-        
-        // cprintf("pid : %d, level : %d, priority : %d\n", p->pid, p->level, p->priority);
-        c->proc = p;
-        switchuvm(p);
-        p->state = RUNNING;
-
-        swtch(&(c->scheduler), p->context);
-        switchkvm();
-
-        p->consumeTime += 1;
-        p->priority = updatePriority(p);
-        p->level = updateLevel(p);
-        enqueue(&MLFQ[p->level], p);
-
-        c->proc = 0;
-        revisit = 1;
-        break;
-      }
     }
     release(&ptable.lock);
 
@@ -491,7 +387,6 @@ yield(void)
 {
   acquire(&ptable.lock);  //DOC: yieldlock
   myproc()->state = RUNNABLE;
-  enqueue(&MLFQ[myproc()->level], myproc());
   sched();
   release(&ptable.lock);
 }
@@ -565,10 +460,8 @@ wakeup1(void *chan)
   struct proc *p;
 
   for(p = ptable.proc; p < &ptable.proc[NPROC]; p++)
-    if(p->state == SLEEPING && p->chan == chan) {
+    if(p->state == SLEEPING && p->chan == chan)
       p->state = RUNNABLE;
-      enqueue(&MLFQ[p->level], p);
-    }
 }
 
 // Wake up all processes sleeping on chan.
@@ -593,10 +486,8 @@ kill(int pid)
     if(p->pid == pid){
       p->killed = 1;
       // Wake process from sleep if necessary.
-      if(p->state == SLEEPING) {
+      if(p->state == SLEEPING)
         p->state = RUNNABLE;
-        enqueue(&MLFQ[p->level], p);
-      }
       release(&ptable.lock);
       return 0;
     }
@@ -640,78 +531,4 @@ procdump(void)
     }
     cprintf("\n");
   }
-}
-
-int getLevel(void)
-{
-  return myproc()->level;
-}
-
-void
-setPriority(int pid, int priority)
-{
-  struct proc *p;
-  acquire(&ptable.lock);
-  for (p = ptable.proc; p < &ptable.proc[NPROC]; p++) {
-    if (p->pid == pid) {
-      p->priority = priority;
-      break;
-    }
-  }
-  release(&ptable.lock);
-}
-
-void 
-priority_boosting(void)
-{
-  struct proc *p;
-  isSchedulerLocked = MLFQ[L0].haveToBeInFront = 0;
-  for (int level = L0; level <= L2; level++) {
-    while (!isEmpty(&MLFQ[level])) {
-      p = dequeue(&MLFQ[level]);
-      p->priority = 3;
-      p->level = L0;
-      p->consumeTime = 0;
-    }
-  }
-  for (p = ptable.proc; p < &ptable.proc[NPROC]; p++) {
-    if (p->state != RUNNABLE || p->pid == scheduledPid)
-      continue;
-    enqueue(&MLFQ[L0], p);
-  }
-  scheduledPid = -1;
-}
-
-void schedulerLock(int password)
-{
-  struct proc *p = myproc();
-  if ((password != PASSWORD) || (isSchedulerLocked == 1)) {
-    cprintf("LOCK FAILED !! pid : %d | time quantum : %d | MLFQ level : %d\n", p->pid, p->consumeTime, p->level);
-    kill(p->pid);
-    return; 
-  }
-
-  isSchedulerLocked = MLFQ[L0].haveToBeInFront = 1;
-  scheduledPid = p->pid;
-  acquire(&tickslock);
-  ticks = 0;
-  release(&tickslock);
-
-  enqueueFrontOfL0(&MLFQ[L0], p);  
-}
-
-void schedulerUnlock(int password)
-{
-  struct proc *p = myproc();
-  if ((password != PASSWORD) || (isSchedulerLocked != 1)) {
-    cprintf("UNLOCK FAILED !! pid : %d | time quantum : %d | MLFQ level : %d\n", p->pid, p->consumeTime, p->level);
-    kill(p->pid);
-    return; 
-  }
-
-  isSchedulerLocked = MLFQ[L0].haveToBeInFront = 0;
-  scheduledPid = -1;
-  p->priority = 3;
-  p->level = L0;
-  p->consumeTime = 0;
 }
